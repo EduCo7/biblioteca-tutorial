@@ -59,3 +59,6 @@ codebase.md
 
 # Entregas zipadas na raiz
 /*.zip
+
+# Mídia gerada (narrações das aulas), não versionada
+/media/
