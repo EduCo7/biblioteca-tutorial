@@ -1,0 +1,8 @@
+# Painéis como código: o Grafana carrega os .json desta pasta ao subir.
+apiVersion: 1
+providers:
+  - name: lanchonete
+    folder: Lanchonete
+    type: file
+    options:
+      path: /var/lib/grafana/dashboards

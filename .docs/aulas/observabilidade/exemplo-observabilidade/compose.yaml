@@ -1,0 +1,92 @@
+# Exemplo dos slides: a lanchonete da aula de filas, agora observada.
+# Suba com:  docker compose -f .docs/aulas/observabilidade/exemplo-observabilidade/compose.yaml up -d --wait
+#
+#   Prometheus  http://localhost:9190   guarda os números
+#   Grafana     http://localhost:3301   painel e alertas
+#   Mailpit     http://localhost:8125   a caixa de e-mail do gerente
+name: exemplo-observabilidade
+
+services:
+  # A fila da aula passada, igual: Redis com AOF e volume.
+  fila:
+    image: redis:8
+    command: ["redis-server", "--appendonly", "yes", "--maxmemory-policy", "noeviction"]
+    ports:
+      - "127.0.0.1:6400:6379"
+    volumes:
+      - dados:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 2s
+      timeout: 3s
+      retries: 15
+
+  # O Prometheus vem buscar o /metrics do caixa a cada 5 s e guarda cada número
+  # com a hora em que foi lido: uma série temporal.
+  prometheus:
+    image: prom/prometheus:v3.16.0
+    volumes:
+      - ./prometheus.yml:/etc/prometheus/prometheus.yml:ro
+    ports:
+      - "127.0.0.1:9190:9090"
+    # O caixa roda no seu computador, fora do Docker. host.docker.internal é o
+    # nome do seu computador visto de dentro do contêiner (no Linux, esta linha
+    # é que cria o nome; no Windows e no macOS ele já existe).
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    healthcheck:
+      test: ["CMD", "wget", "-qO-", "http://localhost:9090/-/ready"]
+      interval: 2s
+      timeout: 3s
+      retries: 15
+
+  # O Grafana desenha o painel e avalia os alertas. Tudo vem de arquivos da
+  # pasta grafana/: fonte de dados, painel, regras e para quem mandar e-mail.
+  grafana:
+    image: grafana/grafana:13.3.2
+    environment:
+      # Entra direto como leitor, sem login: dá para ver o painel e os alertas.
+      # Para editar, "Sign in" com admin / lanchonete. Senha no compose só
+      # porque a porta está presa ao 127.0.0.1: num servidor de verdade, nunca.
+      GF_AUTH_ANONYMOUS_ENABLED: "true"
+      GF_SECURITY_ADMIN_PASSWORD: lanchonete
+      # os alertas saem por e-mail, pelo SMTP do Mailpit
+      GF_SMTP_ENABLED: "true"
+      GF_SMTP_HOST: mailpit:1025
+      GF_SMTP_FROM_ADDRESS: grafana@lanchonete.local
+      GF_SMTP_FROM_NAME: Grafana da lanchonete
+      # os links do e-mail apontam para cá (sem isto, para localhost:3000)
+      GF_SERVER_ROOT_URL: http://localhost:3301
+    volumes:
+      - ./grafana/datasource.yaml:/etc/grafana/provisioning/datasources/datasource.yaml:ro
+      - ./grafana/dashboards.yaml:/etc/grafana/provisioning/dashboards/dashboards.yaml:ro
+      - ./grafana/lanchonete.json:/var/lib/grafana/dashboards/lanchonete.json:ro
+      - ./grafana/alertas.yaml:/etc/grafana/provisioning/alerting/alertas.yaml:ro
+    ports:
+      - "127.0.0.1:3301:3000"
+    depends_on:
+      prometheus:
+        condition: service_healthy
+      mailpit:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "wget", "-qO-", "http://localhost:3000/api/health"]
+      interval: 2s
+      timeout: 3s
+      retries: 30
+      # na primeira subida o Grafana cria o próprio banco: pode passar de 1 min
+      start_period: 3m
+
+  # Uma caixa de e-mail de mentira: recebe tudo e mostra numa página.
+  mailpit:
+    image: axllent/mailpit:v1.34.0
+    ports:
+      - "127.0.0.1:8125:8025"
+    healthcheck:
+      test: ["CMD", "/mailpit", "readyz"]
+      interval: 2s
+      timeout: 3s
+      retries: 15
+
+volumes:
+  dados:

@@ -1,0 +1,80 @@
+# Os alertas: o que vigiar, de quanto em quanto tempo e para quem avisar.
+# Alertamos SINTOMAS (pedido perdido, cliente vendo erro), não causas (Redis
+# caiu, CPU alta): o sintoma é o que o cliente sente.
+apiVersion: 1
+
+groups:
+  - orgId: 1
+    name: lanchonete
+    folder: Lanchonete
+    interval: 10s # avalia as regras a cada 10 s
+    rules:
+      - uid: pedidos-perdidos
+        title: Pedidos perdidos
+        condition: C
+        data:
+          - refId: A
+            datasourceUid: prometheus
+            relativeTimeRange: { from: 60, to: 0 }
+            model:
+              refId: A
+              expr: max(queue_dead_letters)
+              instant: true
+          - refId: C
+            datasourceUid: __expr__
+            model:
+              refId: C
+              type: threshold
+              expression: A
+              conditions:
+                - evaluator: { type: gt, params: [0] }
+        for: 0s # dispara na primeira avaliação: um pedido perdido já é problema
+        noDataState: OK
+        execErrState: Error
+        annotations:
+          summary: Há pedidos na gaveta do gerente (fila de mortas).
+          description: Um pedido esgotou as tentativas. Procure o trace_id dele nos logs do worker.
+
+      - uid: clientes-recebendo-erro
+        title: Clientes recebendo erro
+        condition: C
+        data:
+          - refId: A
+            datasourceUid: prometheus
+            relativeTimeRange: { from: 60, to: 0 }
+            model:
+              refId: A
+              expr: sum(rate(http_server_request_duration_seconds_count{status=~"5.."}[1m]))
+              instant: true
+          - refId: C
+            datasourceUid: __expr__
+            model:
+              refId: C
+              type: threshold
+              expression: A
+              conditions:
+                - evaluator: { type: gt, params: [0] }
+        for: 20s # 20 s seguidos; com o rate de 1 min, até um 500 solto dura isso
+        noDataState: OK
+        execErrState: Error
+        annotations:
+          summary: O caixa está respondendo 500.
+          description: Clientes estão recebendo erro. Procure as linhas "level":"error" no log do caixa.
+
+contactPoints:
+  - orgId: 1
+    name: gerente
+    receivers:
+      - uid: gerente-email
+        type: email
+        settings:
+          addresses: gerente@lanchonete.local
+          singleEmail: true
+
+policies:
+  - orgId: 1
+    receiver: gerente
+    group_by: ["alertname"]
+    group_wait: 5s # espera 5 s para juntar alertas parecidos num e-mail só
+    group_interval: 1m
+    repeat_interval: 4h # se continuar disparando, lembra de novo em 4 h

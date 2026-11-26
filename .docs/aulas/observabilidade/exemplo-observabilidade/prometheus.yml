@@ -1,0 +1,9 @@
+# Modelo pull: o Prometheus vai até a aplicação buscar os números.
+global:
+  scrape_interval: 5s # de quanto em quanto tempo ler o /metrics
+
+scrape_configs:
+  - job_name: lanchonete
+    static_configs:
+      # o caixa (bun index.ts), rodando no seu computador, porta 3300
+      - targets: ["host.docker.internal:3300"]

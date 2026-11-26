@@ -1,0 +1,21 @@
+# Exemplo dos slides: a lanchonete da aula de filas, agora observada.
+# Suba com:  docker compose -f .docs/aulas/observabilidade/exemplo-observabilidade/compose.yaml up -d --wait
+name: exemplo-observabilidade
+
+services:
+  # A fila da aula passada, igual: Redis com AOF e volume.
+  fila:
+    image: redis:8
+    command: ["redis-server", "--appendonly", "yes", "--maxmemory-policy", "noeviction"]
+    ports:
+      - "127.0.0.1:6400:6379"
+    volumes:
+      - dados:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 2s
+      timeout: 3s
+      retries: 15
+
+volumes:
+  dados:
