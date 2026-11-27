@@ -126,3 +126,6 @@ if (problems.length > 0) {
   for (const problem of problems) console.error(`  ${problem}\n`);
   process.exit(1);
 }
+
+
+console.log("Fronteiras de módulo respeitadas.");
